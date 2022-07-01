@@ -58,13 +58,14 @@ task("stake", "stake tokens")
     .addParam("contract", "contract address")
     .addParam("signer", "signer number")
     .addParam("amount", "tokens amount")
-    .setAction(async ({ contract, signer, amount }, { ethers }) => {
+    .addParam("proof", "merkle tree proof for whitelist")
+    .setAction(async ({ contract, signer, amount, proof }, { ethers }) => {
         const signers = await ethers.getSigners()
 
         const factory = await ethers.getContractFactory("Staking");
         const staking = factory.attach(contract);
 
-        const tx = await staking.connect(signers[signer]).stake(amount)
+        const tx = await staking.connect(signers[signer]).stake(amount, proof);
 
         console.log(tx)
     });

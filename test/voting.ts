@@ -1,12 +1,18 @@
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
+import { keccak256 } from "ethers/lib/utils";
 import { ethers } from "hardhat";
+import MerkleTree from "merkletreejs";
+
 import { Voting, Staking, XXXToken, Voting__factory, Staking__factory, XXXToken__factory } from "../typechain-types";
 import config from "./config";
+import { getTree } from "./utils";
 
 const { PERIOD_DURATION, MINIMUM_QUORUM } = config.VOTING;
 
 describe("Voting", function () {
+    let merkletree: MerkleTree;
+
     let owner: SignerWithAddress;
     let acc1: SignerWithAddress;
     let acc2: SignerWithAddress;
@@ -39,6 +45,13 @@ describe("Voting", function () {
     before(async function() {
         [owner, acc1, acc2, acc3, chairman] = await ethers.getSigners();
 
+        merkletree = await getTree([
+            owner.address,
+            acc1.address,
+            acc2.address,
+            acc3.address,
+        ]);
+
         erc20 = await new XXXToken__factory(owner).deploy("Token XXX", "XXX");
         await erc20.deployed();
 
@@ -49,8 +62,12 @@ describe("Voting", function () {
         );
         await voting.deployed();
 
-        const stakingFactory = await ethers.getContractFactory("Staking", owner);
-        staking = <Staking>(await stakingFactory.deploy(erc20.address, erc20.address, voting.address));
+        staking = await new Staking__factory(owner).deploy(
+            erc20.address,
+            erc20.address,
+            voting.address,
+            merkletree.getHexRoot(),
+        );
         await staking.deployed();
 
         await voting.setStakingAddress(staking.address);
@@ -69,10 +86,22 @@ describe("Voting", function () {
         await erc20.connect(acc2).approve(staking.address, ethers.constants.MaxUint256);
         await erc20.connect(acc3).approve(staking.address, ethers.constants.MaxUint256);
 
-        await staking.stake(MINIMUM_QUORUM / 2 + 1);
-        await staking.connect(acc1).stake(MINIMUM_QUORUM / 2);
-        await staking.connect(acc2).stake(MINIMUM_QUORUM / 2 - 1);
-        await staking.connect(acc3).stake(1);
+        await staking.stake(
+            MINIMUM_QUORUM / 2 + 1,
+            merkletree.getHexProof(keccak256(owner.address))
+        );
+        await staking.connect(acc1).stake(
+            MINIMUM_QUORUM / 2,
+            merkletree.getHexProof(keccak256(acc1.address))
+        );
+        await staking.connect(acc2).stake(
+            MINIMUM_QUORUM / 2 - 1,
+            merkletree.getHexProof(keccak256(acc2.address))
+        );
+        await staking.connect(acc3).stake(
+            1,
+            merkletree.getHexProof(keccak256(acc3.address))
+        );
     });
 
     it("Should correct deployed", async function() {

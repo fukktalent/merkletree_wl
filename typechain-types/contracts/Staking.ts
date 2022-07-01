@@ -58,9 +58,11 @@ export interface StakingInterface extends utils.Interface {
     "setFreezePeriod(uint32)": FunctionFragment;
     "setRewardPercent(uint32)": FunctionFragment;
     "setRewardPeriod(uint32)": FunctionFragment;
-    "stake(uint256)": FunctionFragment;
+    "setWhitelistHash(bytes32)": FunctionFragment;
+    "stake(uint256,bytes32[])": FunctionFragment;
     "supportsInterface(bytes4)": FunctionFragment;
     "unstake()": FunctionFragment;
+    "whitelistHash()": FunctionFragment;
   };
 
   getFunction(
@@ -80,9 +82,11 @@ export interface StakingInterface extends utils.Interface {
       | "setFreezePeriod"
       | "setRewardPercent"
       | "setRewardPeriod"
+      | "setWhitelistHash"
       | "stake"
       | "supportsInterface"
       | "unstake"
+      | "whitelistHash"
   ): FunctionFragment;
 
   encodeFunctionData(functionFragment: "DAO_ROLE", values?: undefined): string;
@@ -140,14 +144,22 @@ export interface StakingInterface extends utils.Interface {
     values: [PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
+    functionFragment: "setWhitelistHash",
+    values: [PromiseOrValue<BytesLike>]
+  ): string;
+  encodeFunctionData(
     functionFragment: "stake",
-    values: [PromiseOrValue<BigNumberish>]
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BytesLike>[]]
   ): string;
   encodeFunctionData(
     functionFragment: "supportsInterface",
     values: [PromiseOrValue<BytesLike>]
   ): string;
   encodeFunctionData(functionFragment: "unstake", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "whitelistHash",
+    values?: undefined
+  ): string;
 
   decodeFunctionResult(functionFragment: "DAO_ROLE", data: BytesLike): Result;
   decodeFunctionResult(
@@ -194,12 +206,20 @@ export interface StakingInterface extends utils.Interface {
     functionFragment: "setRewardPeriod",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(
+    functionFragment: "setWhitelistHash",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "stake", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "supportsInterface",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "unstake", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "whitelistHash",
+    data: BytesLike
+  ): Result;
 
   events: {
     "Claimed(address,uint256)": EventFragment;
@@ -372,8 +392,14 @@ export interface Staking extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
+    setWhitelistHash(
+      whitelistHash_: PromiseOrValue<BytesLike>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
+
     stake(
       amount: PromiseOrValue<BigNumberish>,
+      proof: PromiseOrValue<BytesLike>[],
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
@@ -385,6 +411,8 @@ export interface Staking extends BaseContract {
     unstake(
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
+
+    whitelistHash(overrides?: CallOverrides): Promise<[string]>;
   };
 
   DAO_ROLE(overrides?: CallOverrides): Promise<string>;
@@ -450,8 +478,14 @@ export interface Staking extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
+  setWhitelistHash(
+    whitelistHash_: PromiseOrValue<BytesLike>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
+
   stake(
     amount: PromiseOrValue<BigNumberish>,
+    proof: PromiseOrValue<BytesLike>[],
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
@@ -463,6 +497,8 @@ export interface Staking extends BaseContract {
   unstake(
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
+
+  whitelistHash(overrides?: CallOverrides): Promise<string>;
 
   callStatic: {
     DAO_ROLE(overrides?: CallOverrides): Promise<string>;
@@ -526,8 +562,14 @@ export interface Staking extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
+    setWhitelistHash(
+      whitelistHash_: PromiseOrValue<BytesLike>,
+      overrides?: CallOverrides
+    ): Promise<void>;
+
     stake(
       amount: PromiseOrValue<BigNumberish>,
+      proof: PromiseOrValue<BytesLike>[],
       overrides?: CallOverrides
     ): Promise<void>;
 
@@ -537,6 +579,8 @@ export interface Staking extends BaseContract {
     ): Promise<boolean>;
 
     unstake(overrides?: CallOverrides): Promise<void>;
+
+    whitelistHash(overrides?: CallOverrides): Promise<string>;
   };
 
   filters: {
@@ -647,8 +691,14 @@ export interface Staking extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
+    setWhitelistHash(
+      whitelistHash_: PromiseOrValue<BytesLike>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
+
     stake(
       amount: PromiseOrValue<BigNumberish>,
+      proof: PromiseOrValue<BytesLike>[],
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
@@ -660,6 +710,8 @@ export interface Staking extends BaseContract {
     unstake(
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
+
+    whitelistHash(overrides?: CallOverrides): Promise<BigNumber>;
   };
 
   populateTransaction: {
@@ -728,8 +780,14 @@ export interface Staking extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
+    setWhitelistHash(
+      whitelistHash_: PromiseOrValue<BytesLike>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<PopulatedTransaction>;
+
     stake(
       amount: PromiseOrValue<BigNumberish>,
+      proof: PromiseOrValue<BytesLike>[],
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
@@ -741,5 +799,7 @@ export interface Staking extends BaseContract {
     unstake(
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
+
+    whitelistHash(overrides?: CallOverrides): Promise<PopulatedTransaction>;
   };
 }

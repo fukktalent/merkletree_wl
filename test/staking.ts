@@ -1,23 +1,30 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
-import { XXXToken, IUniswapV2Pair, Staking, IUniswapV2Factory, IUniswapV2Router02, Voting } from "../typechain-types";
+import { XXXToken, IUniswapV2Pair, Staking, IUniswapV2Factory, IUniswapV2Router02, Voting, XXXToken__factory, Voting__factory, Staking__factory } from "../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { BigNumberish } from "ethers";
+import MerkleTree from "merkletreejs";
 
+import { getTree } from "./utils";
 import config from "./config";
+import { keccak256 } from "ethers/lib/utils";
 
 const { PERIOD_DURATION, MINIMUM_QUORUM } = config.VOTING;
 const { DEF_SETTINGS, NEW_SETTINGS, STAKE_AMOUNT } = config.STAKING;
 
 describe("Staking", function () {
+    let merkletree: MerkleTree;  
+
     let staking: Staking;
 
     let uniRouter: IUniswapV2Router02;
     let uniFactory: IUniswapV2Factory;
 
     let owner: SignerWithAddress;
-    let user: SignerWithAddress;
+    let acc1: SignerWithAddress;
+    let acc2: SignerWithAddress;
+    let acc3: SignerWithAddress;
 
     let xxxToken: XXXToken;
     let pair: IUniswapV2Pair;
@@ -28,11 +35,16 @@ describe("Staking", function () {
         uniRouter = <IUniswapV2Router02>(await ethers.getContractAt("IUniswapV2Router02", process.env.ROUTER_ADDRESS as string));
         uniFactory = <IUniswapV2Factory>(await ethers.getContractAt("IUniswapV2Factory", process.env.FACTORY_ADDRESS as string));
 
-        [owner, user] = await ethers.getSigners();
+        [owner, acc1, acc2, acc3] = await ethers.getSigners();
+
+        merkletree = await getTree([
+            owner.address,
+            acc1.address,
+            acc2.address,
+        ]);
 
         // create and mint two erc20 tokens
-        const erc20Factory = await ethers.getContractFactory("XXXToken", owner);
-        xxxToken = <XXXToken>(await erc20Factory.deploy("Token XXX", "XXX"));
+        xxxToken = await new XXXToken__factory(owner).deploy("Token XXX", "XXX")
         await xxxToken.deployed();
         
         await xxxToken.grantRole(
@@ -68,12 +80,15 @@ describe("Staking", function () {
         const pairAddress: string = await uniFactory.getPair(uniRouter.WETH(), xxxToken.address);
         pair = <IUniswapV2Pair> await ethers.getContractAt("IUniswapV2Pair", pairAddress);
 
-        const votingFactory = await ethers.getContractFactory("Voting", owner);
-        voting = <Voting>(await votingFactory.deploy(PERIOD_DURATION, MINIMUM_QUORUM, owner.address));
+        voting = await new Voting__factory(owner).deploy(PERIOD_DURATION, MINIMUM_QUORUM, owner.address);
         await voting.deployed();
 
-        const stakingFactory = await ethers.getContractFactory("Staking", owner);
-        staking = <Staking>(await stakingFactory.deploy(pair.address, xxxToken.address, voting.address));
+        staking = await new Staking__factory(owner).deploy(
+            pair.address,
+            xxxToken.address,
+            voting.address,
+            merkletree.getHexRoot()
+        );
         await staking.deployed();
 
         await voting.setStakingAddress(staking.address);
@@ -95,7 +110,6 @@ describe("Staking", function () {
         expect(await xxxToken.balanceOf(staking.address)).to.be.equal(1_000_000_000);
     });
 
-
     describe("freezePeriod", function () {
         it("Should set freeze period", async function () {
             const iface = new ethers.utils.Interface([
@@ -104,11 +118,14 @@ describe("Staking", function () {
             const calldata = iface.encodeFunctionData("setFreezePeriod", [NEW_SETTINGS.FREEZE_PERIOD]);
             await voting.addProposal(calldata, staking.address, "setFreezePeriod")
 
-            await pair.transfer(user.address, 1001);
+            await pair.transfer(acc1.address, 1001);
 
-            await pair.connect(user).approve(staking.address, 1001);
-            await staking.connect(user).stake(1001);
-            await voting.connect(user).vote(0, true);
+            await pair.connect(acc1).approve(staking.address, 1001);
+            await staking.connect(acc1).stake(
+                1001,
+                merkletree.getHexProof(keccak256(acc1.address))
+            );
+            await voting.connect(acc1).vote(0, true);
     
             await ethers.provider.send("evm_increaseTime", [61 * 60]);
             await ethers.provider.send("evm_mine", []);
@@ -120,7 +137,7 @@ describe("Staking", function () {
         it("Should revert with no access error", async function () {
             const freezePeriod = await staking.freezePeriod();
 
-            const tx = staking.connect(user).setFreezePeriod(NEW_SETTINGS.FREEZE_PERIOD);
+            const tx = staking.connect(acc1).setFreezePeriod(NEW_SETTINGS.FREEZE_PERIOD);
             await expect(tx).to.be.revertedWith("AccessControl:");
 
             const newFreezePeriod = await staking.freezePeriod();
@@ -138,7 +155,7 @@ describe("Staking", function () {
         it("Should revert with no access error", async function () {
             const rewardPeriod = await staking.rewardPeriod();
 
-            const tx = staking.connect(user).setRewardPeriod(NEW_SETTINGS.REWARD_PERIOD);
+            const tx = staking.connect(acc1).setRewardPeriod(NEW_SETTINGS.REWARD_PERIOD);
             await expect(tx).to.be.revertedWith("AccessControl:");
 
             const newRewardPeriod = await staking.rewardPeriod();
@@ -156,7 +173,7 @@ describe("Staking", function () {
         it("Should revert with no access error", async function () {
             const rewardPercent = await staking.rewardPercent();
 
-            const tx = staking.connect(user).setRewardPercent(5 * 60);
+            const tx = staking.connect(acc1).setRewardPercent(5 * 60);
             await expect(tx).to.be.revertedWith("AccessControl:");
 
             const newRewardPercent = await staking.rewardPercent();
@@ -166,14 +183,17 @@ describe("Staking", function () {
 
     describe("stake", function() {
         it("Should stake lp tokens", async function () {
-            const userBalance = await pair.balanceOf(owner.address);
+            const acc1Balance = await pair.balanceOf(owner.address);
             const stakingBalance = await pair.balanceOf(staking.address);
 
-            const tx = staking.stake(STAKE_AMOUNT);
+            const tx = staking.stake(
+                STAKE_AMOUNT,
+                merkletree.getHexProof(keccak256(owner.address))
+            );
             await expect(tx).to.emit(staking, "Staked").withArgs(owner.address, STAKE_AMOUNT);
 
             expect(await pair.balanceOf(owner.address)).to.be.equal(
-                userBalance.sub(STAKE_AMOUNT)
+                acc1Balance.sub(STAKE_AMOUNT)
             );
             expect(await pair.balanceOf(staking.address)).to.be.equal(
                 stakingBalance.add(STAKE_AMOUNT)
@@ -183,6 +203,14 @@ describe("Staking", function () {
             expect(stakeData.lpAmount).to.be.equal(STAKE_AMOUNT);
             expect(stakeData.rewardAmount).to.be.equal(0);
         });
+
+        it("Should revert with AccessForbiden", async function () {
+            const tx = staking.connect(acc3).stake(
+                1000,
+                merkletree.getHexProof(keccak256(acc3.address))
+            );
+            await expect(tx).to.be.revertedWith("AccessForbiden");
+        })
     });
 
     describe("claim", function() {
@@ -195,7 +223,7 @@ describe("Staking", function () {
             await ethers.provider.send("evm_increaseTime", [3 * 60]);
             await ethers.provider.send("evm_mine", []);
 
-            const userBalance = await xxxToken.balanceOf(owner.address);
+            const acc1Balance = await xxxToken.balanceOf(owner.address);
             const stakingBalance = await xxxToken.balanceOf(staking.address);
 
             const tx = staking.claim();
@@ -205,7 +233,7 @@ describe("Staking", function () {
             );
 
             expect(await xxxToken.balanceOf(owner.address)).to.be.equal(
-              userBalance.add(STAKE_AMOUNT * NEW_SETTINGS.REWARD_PERCENT / 100)
+              acc1Balance.add(STAKE_AMOUNT * NEW_SETTINGS.REWARD_PERCENT / 100)
             );
             expect(await xxxToken.balanceOf(staking.address)).to.be.equal(
               stakingBalance.sub(STAKE_AMOUNT * NEW_SETTINGS.REWARD_PERCENT / 100)
@@ -228,7 +256,10 @@ describe("Staking", function () {
             await ethers.provider.send("evm_mine", []);
 
             await pair.approve(staking.address, STAKE_AMOUNT);
-            await staking.stake(STAKE_AMOUNT);
+            await staking.stake(
+                STAKE_AMOUNT,
+                merkletree.getHexProof(keccak256(owner.address))
+            );
 
             await ethers.provider.send("evm_increaseTime", [3 * 60 * 5]);
             await ethers.provider.send("evm_mine", []);
@@ -251,7 +282,7 @@ describe("Staking", function () {
             await ethers.provider.send("evm_increaseTime", [3 * 60 * 5]);
             await ethers.provider.send("evm_mine", []);
 
-            const userBalance = await pair.balanceOf(owner.address);
+            const acc1Balance = await pair.balanceOf(owner.address);
             const stakingBalance = await pair.balanceOf(staking.address);
 
             const tx = await staking.connect(owner).unstake();
@@ -264,7 +295,7 @@ describe("Staking", function () {
             await ethers.provider.send("evm_mine", []);
 
             expect(await pair.balanceOf(owner.address)).to.be.equal(
-              userBalance.add(STAKE_AMOUNT * 2)
+              acc1Balance.add(STAKE_AMOUNT * 2)
             );
             expect(await pair.balanceOf(staking.address)).to.be.equal(
               stakingBalance.sub(STAKE_AMOUNT * 2)
@@ -281,10 +312,47 @@ describe("Staking", function () {
             const calldata = iface.encodeFunctionData("setFreezePeriod", [NEW_SETTINGS.FREEZE_PERIOD]);
             await voting.addProposal(calldata, staking.address, "setFreezePeriod")
 
-            await voting.connect(user).vote(1, true);
+            await voting.connect(acc1).vote(1, true);
 
-            const tx = staking.connect(user).unstake();
+            const tx = staking.connect(acc1).unstake();
             await expect(tx).to.be.revertedWith("ActiveVotingExists");
+        });
+    });
+
+    describe("setWhitelistHash", function() {
+        it("Should set whitelist hash", async function () {
+            const newMerkletree = await getTree([
+                owner.address,
+                acc1.address,
+                acc2.address,
+                acc3.address,
+            ]);
+
+            const iface = new ethers.utils.Interface([
+                "function setWhitelistHash(bytes32 whitelistHash_)"
+            ]);
+            const calldata = iface.encodeFunctionData(
+                "setWhitelistHash",
+                [merkletree.getHexRoot()]
+            );
+            await voting.addProposal(calldata, staking.address, "setWhitelistHash")
+
+            await pair.transfer(acc1.address, 1001);
+
+            await pair.connect(acc1).approve(staking.address, 1001);
+            await staking.connect(acc1).stake(
+                1001,
+                merkletree.getHexProof(keccak256(acc1.address))
+            );
+            await voting.connect(acc1).vote(2, true);
+    
+            await ethers.provider.send("evm_increaseTime", [61 * 60]);
+            await ethers.provider.send("evm_mine", []);
+    
+            await voting.finishProposal(2);
+            expect(await staking.whitelistHash()).to.be.equal(merkletree.getHexRoot());
+
+            merkletree = newMerkletree;
         });
     });
 });

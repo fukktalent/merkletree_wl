@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Voting.sol";
 
 /// @title staking contract for stake uniswap v2 lp tokens
@@ -27,6 +28,8 @@ contract Staking is AccessControl {
     uint32 private _rewardPeriod = 7 days;
     uint32 private _rewardPercent = 3;
 
+    bytes32 private _whitelistHash;
+
     event Staked(address from, uint256 amount);
     event Unstaked(address to, uint256 amount);
     event Claimed(address to, uint256 amount);
@@ -34,23 +37,36 @@ contract Staking is AccessControl {
     error TokensFreezed();
     error ActiveVotingExists();
     error ZeroRewards();
+    error AccessForbiden();
 
     /// @notice sets state and roles
     /// @param tokenPair_ address of staking lp token
     /// @param rewardToken_ address of reward token
     /// @param votingAddress address of dao voting contract
-    constructor(IERC20 tokenPair_, IERC20 rewardToken_, address votingAddress) {
+    constructor(
+        IERC20 tokenPair_,
+        IERC20 rewardToken_,
+        address votingAddress,
+        bytes32 whitelistHash_
+    ) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(DAO_ROLE, votingAddress);
         _setRoleAdmin(DAO_ROLE, DEFAULT_ADMIN_ROLE);
         tokenPair = tokenPair_;
         rewardToken = rewardToken_;
         _votingAddress = votingAddress;
+        _whitelistHash = whitelistHash_;
     }
 
     /// @notice stake lp tokens
     /// @param amount of lp tokens
-    function stake(uint256 amount) public {
+    function stake(uint256 amount, bytes32[] calldata proof) public {
+        if (
+            !MerkleProof.verify(proof, _whitelistHash, keccak256(abi.encodePacked(msg.sender)))
+        ) {
+            revert AccessForbiden();
+        }
+
         tokenPair.transferFrom(msg.sender, address(this), amount);
 
         _stakes[msg.sender].rewardAmount += _calcReward(msg.sender);
@@ -112,6 +128,12 @@ contract Staking is AccessControl {
         _rewardPercent = rewardPercent_;
     }
 
+    /// @notice sets whitelist hash
+    /// @param whitelistHash_ whitelist merkle tree root hash
+    function setWhitelistHash(bytes32 whitelistHash_) external onlyRole(DAO_ROLE) {
+        _whitelistHash = whitelistHash_;
+    }
+
     /// @notice returns stake info
     /// @param addr address of user
     /// @return Stake stake info
@@ -135,6 +157,12 @@ contract Staking is AccessControl {
     /// @return _rewardPercent reward percent
     function rewardPercent() external view returns (uint32) {
         return _rewardPercent;
+    }
+
+    /// @notice returns whitelist hash
+    /// @return _whitelistHash whitelist merkle tree root hash
+    function whitelistHash() external view returns (bytes32) {
+        return _whitelistHash;
     }
 
     /// @notice calculates amount of reward tokens for period
