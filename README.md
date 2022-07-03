@@ -6,6 +6,6 @@ ACDMToken: https://rinkeby.etherscan.io/address/0xB9c541db3F8f59b442D43e8EEa7004
 
 Voting: https://rinkeby.etherscan.io/address/0x582BDDF6edE0717f5B7403752fCFdF9D5f98a53e#code
 
-Staking: https://rinkeby.etherscan.io/address/0x56F47eC80293D974b406688ed073F1825E43FBcd#code
+Staking: https://rinkeby.etherscan.io/address/0xD033d482766A6E6842bC0B7832119501e48FE596#code
 
 Platform: https://rinkeby.etherscan.io/address/0x2884C94Ced14DbEfa9F76f6498b8FD5dA51e07b5#code

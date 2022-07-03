@@ -1,5 +1,7 @@
 import { task } from "hardhat/config";
 import "@nomiclabs/hardhat-ethers";
+import { BytesLike, keccak256 } from "ethers/lib/utils";
+import MerkleTree from "merkletreejs";
 
 task("approve", "approve tokens to address")
     .addParam("contract", "address of token")
@@ -74,7 +76,7 @@ task("unstake", "unstake tokens")
     .addParam("contract", "contract address")
     .addParam("signer", "signer number")
     .setAction(async ({ contract, signer }, { ethers }) => {
-        const signers = await ethers.getSigners()
+        const signers = await ethers.getSigners();
 
         const factory = await ethers.getContractFactory("Staking");
         const staking = factory.attach(contract);
@@ -96,4 +98,17 @@ task("claim", "claim tokens")
         const tx = await staking.connect(signers[signer]).claim();
 
         console.log(tx)  
+    });
+
+task("roothash", "stake tokens")
+    .addParam("addresses", "account addresses")
+    .setAction(async ({ addresses }) => {
+        const addressList = addresses
+            .split(',')
+            .map((address: BytesLike) => keccak256(address));
+
+        console.log(
+            new MerkleTree(addressList, keccak256, { sortPairs: true })
+                .getHexRoot()
+        );
     });
